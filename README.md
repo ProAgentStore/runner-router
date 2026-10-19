@@ -9,6 +9,33 @@ It ships as two entry points that share one script (`scripts/route.sh`):
 
 Both output `runner`, a JSON array you pass to `runs-on` with `fromJSON`. Both work from any org. By default they check the owner of the calling repo, so the same setup works in `HeartFull-online`, `proappstore-online`, or your personal account.
 
+## Adopting it (ProAgentStore orgs and anyone else)
+
+1. **Create the org secret `ORG_BILLING_TOKEN`** — a token from an org administrator that can read the org's Actions billing (scopes under [Token and scopes](#token-and-scopes)). Org-level, so every repo in the org can pass it. Without it the router still runs and always routes to self-hosted.
+2. **Have self-hosted runners for the overflow.** ProAgentStore's are the `pags` runners its CLI installs on an agent's pinned machine (`actions_runner_setup`). They carry the `self-hosted` and `pags` labels, which are this router's defaults.
+3. **Let the runners' group serve your repos.** A self-hosted runner group only serves the repos it allows, and by default **not public repos**. In the org's *Settings → Actions → Runner groups*, allow public repositories on the group your runners are in when any calling repo is public; otherwise its jobs queue forever once they route to self-hosted.
+4. **Add a router job and route each job through it:**
+
+```yaml
+jobs:
+  router:
+    uses: ProAgentStore/runner-router/.github/workflows/router.yml@v1
+    with:
+      included-minutes: 2000        # your plan's included Actions minutes
+      safety-margin-minutes: 100    # switch a little early, to cover billing lag
+    secrets:
+      billing-token: ${{ secrets.ORG_BILLING_TOKEN }}
+
+  build:
+    needs: router
+    runs-on: ${{ fromJSON(needs.router.outputs.runner) }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: make build
+```
+
+Every job that should fail over takes `needs: router` and `runs-on: ${{ fromJSON(needs.router.outputs.runner) }}`. Pin `@v1` (or a commit SHA); `v1` moves only for compatible fixes.
+
 ## How it decides
 
 1. Reads the current calendar-month Actions usage from the billing API: `GET /organizations/{org}/settings/billing/usage/summary?product=actions`.
@@ -27,7 +54,7 @@ Both output `runner`, a JSON array you pass to `runs-on` with `fromJSON`. Both w
 
 ### Token and scopes
 
-Store the token as an **org-level secret** (for example `ORG_BILLING_TOKEN`) and pass it as `billing-token`. The token must come from an **org administrator**.
+Store the token as the **org-level secret `ORG_BILLING_TOKEN`** and pass it as `billing-token`. The token must come from an **org administrator**.
 
 - **Classic PAT:** `admin:org`. The endpoint accepts `admin:org` or `repo`, per the `X-Accepted-OAuth-Scopes` header. `admin:org` is the narrower choice.
 - **Fine-grained PAT:** the billing usage docs do not name a fine-grained permission for this endpoint. If you use one, confirm it with a test call before relying on it.
