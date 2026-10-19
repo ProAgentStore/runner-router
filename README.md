@@ -110,7 +110,7 @@ A complete, manually triggered example is in [`.github/workflows/example.yml`](.
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs:
 
 - `shellcheck` on the scripts,
-- `tests/route_test.sh`, an offline suite of 12 cases using recorded billing responses in `tests/fixtures/`, covering hosted, exhausted, margin, overage, and each fail-safe path,
+- `tests/route_test.sh`, an offline suite of 13 cases using recorded billing responses in `tests/fixtures/`, covering hosted, exhausted, margin, overage, and each fail-safe path,
 - an end-to-end check of both entry points with no token, asserting they route to self-hosted.
 
 The CI cannot test a live hosted decision, because it has no billing token. The offline suite covers that logic.

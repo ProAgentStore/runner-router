@@ -48,6 +48,9 @@ check "netAmount > 0 is an overage signal" "$SELF" "overage" \
 check "API error fails safe to self-hosted" "$SELF" "fail-safe: billing API returned HTTP 403" \
   "${SELF_ARGS[@]}" ROUTER_FIXTURE_BODY="$FIX/under-quota.json" ROUTER_FIXTURE_STATUS=403
 
+check "invalid token (401) fails safe to self-hosted" "$SELF" "fail-safe: billing API returned HTTP 401" \
+  "${SELF_ARGS[@]}" ROUTER_BILLING_TOKEN=not-a-real-token ROUTER_FIXTURE_BODY="$FIX/under-quota.json" ROUTER_FIXTURE_STATUS=401
+
 check "missing token fails safe" "$SELF" "fail-safe: no billing token" \
   "${SELF_ARGS[@]}" ROUTER_BILLING_TOKEN= ROUTER_FIXTURE_BODY="$FIX/under-quota.json"
 
