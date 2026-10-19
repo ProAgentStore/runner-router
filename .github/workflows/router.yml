@@ -50,7 +50,7 @@ jobs:
       - name: Check out router script
         uses: actions/checkout@v4
         with:
-          repository: serge-ivo/runner-router
+          repository: ProAgentStore/runner-router
           ref: ${{ github.job_workflow_sha }}
           path: runner-router
           persist-credentials: false

@@ -2,7 +2,7 @@ name: runner-router
 description: >-
   Pick GitHub-hosted or self-hosted runs-on from remaining included Actions minutes.
   Fails safe to self-hosted. The job that calls this action must itself run on a self-hosted runner.
-author: serge-ivo
+author: ProAgentStore
 
 inputs:
   org:

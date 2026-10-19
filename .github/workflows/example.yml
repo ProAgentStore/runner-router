@@ -11,7 +11,7 @@ permissions:
 jobs:
   # Option 1: reusable workflow
   route:
-    uses: serge-ivo/runner-router/.github/workflows/router.yml@v1
+    uses: ProAgentStore/runner-router/.github/workflows/router.yml@v1
     with:
       self-hosted-labels: self-hosted,pags
       included-minutes: 3000
@@ -31,7 +31,7 @@ jobs:
       runner: ${{ steps.router.outputs.runner }}
     steps:
       - id: router
-        uses: serge-ivo/runner-router@v1
+        uses: ProAgentStore/runner-router@v1
         with:
           self-hosted-labels: self-hosted,pags
           included-minutes: 3000

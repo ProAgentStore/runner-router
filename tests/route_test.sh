@@ -16,7 +16,7 @@ check() {
   local out="$TMP/out.txt"
   : > "$out"
   env -i PATH="$PATH" GITHUB_OUTPUT="$out" GITHUB_STEP_SUMMARY=/dev/null \
-    ROUTER_ORG=serge-ivo ROUTER_BILLING_TOKEN=test-token "$@" \
+    ROUTER_ORG=ProAgentStore ROUTER_BILLING_TOKEN=test-token "$@" \
     bash "$ROUTE" >/dev/null 2>&1
   local got_runner got_reason
   got_runner=$(sed -n 's/^runner=//p' "$out")

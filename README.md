@@ -62,7 +62,7 @@ The `pags` default label is ProAgentStore-specific. In other orgs, set `self-hos
 ```yaml
 jobs:
   route:
-    uses: serge-ivo/runner-router/.github/workflows/router.yml@v1
+    uses: ProAgentStore/runner-router/.github/workflows/router.yml@v1
     with:
       included-minutes: 3000
       self-hosted-labels: self-hosted,pags
@@ -89,7 +89,7 @@ jobs:
       runner: ${{ steps.router.outputs.runner }}
     steps:
       - id: router
-        uses: serge-ivo/runner-router@v1
+        uses: ProAgentStore/runner-router@v1
         with:
           included-minutes: 3000
           self-hosted-labels: self-hosted,pags
