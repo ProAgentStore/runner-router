@@ -1,0 +1,54 @@
+name: runner-router
+description: >-
+  Pick GitHub-hosted or self-hosted runs-on from remaining included Actions minutes.
+  Fails safe to self-hosted. The job that calls this action must itself run on a self-hosted runner.
+author: serge-ivo
+
+inputs:
+  org:
+    description: Org whose Actions billing is checked. Empty = the calling repo's owner.
+    required: false
+    default: ''
+  billing-token:
+    description: Token with org billing read access (see README). Without it the action fails safe to self-hosted.
+    required: false
+    default: ''
+  hosted-label:
+    description: runs-on label for GitHub-hosted runners.
+    required: false
+    default: ubuntu-latest
+  self-hosted-labels:
+    description: Comma-separated labels for self-hosted runners.
+    required: false
+    default: self-hosted,pags
+  included-minutes:
+    description: Actions minutes included in the org's plan for the billing cycle.
+    required: false
+    default: '2000'
+  safety-margin-minutes:
+    description: Switch to self-hosted this many minutes before the included total is reached.
+    required: false
+    default: '0'
+
+outputs:
+  runner:
+    description: JSON array for runs-on, e.g. ["ubuntu-latest"] or ["self-hosted","pags"].
+    value: ${{ steps.route.outputs.runner }}
+  reason:
+    description: Why the runner was chosen.
+    value: ${{ steps.route.outputs.reason }}
+
+runs:
+  using: composite
+  steps:
+    - id: route
+      name: Decide runs-on
+      shell: bash
+      env:
+        ROUTER_ORG: ${{ inputs.org || github.repository_owner }}
+        ROUTER_BILLING_TOKEN: ${{ inputs.billing-token }}
+        ROUTER_HOSTED_LABEL: ${{ inputs.hosted-label }}
+        ROUTER_SELF_HOSTED_LABELS: ${{ inputs.self-hosted-labels }}
+        ROUTER_INCLUDED_MINUTES: ${{ inputs.included-minutes }}
+        ROUTER_SAFETY_MARGIN: ${{ inputs.safety-margin-minutes }}
+      run: bash "${{ github.action_path }}/scripts/route.sh"

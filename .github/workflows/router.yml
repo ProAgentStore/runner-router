@@ -1,0 +1,68 @@
+name: runner-router
+
+# Reusable workflow: outputs `runner`, a JSON array to use with
+#   runs-on: ${{ fromJSON(needs.<router-job>.outputs.runner) }}
+# See README.md for required token scopes and the fail-safe behaviour.
+on:
+  workflow_call:
+    inputs:
+      org:
+        description: Org whose Actions billing is checked. Empty = the calling repo's owner.
+        type: string
+        default: ''
+      router-label:
+        description: runs-on for the router job. Must be self-hosted, because hosted jobs are blocked once minutes run out.
+        type: string
+        default: self-hosted
+      hosted-label:
+        description: runs-on label for GitHub-hosted runners.
+        type: string
+        default: ubuntu-latest
+      self-hosted-labels:
+        description: Comma-separated labels for self-hosted runners.
+        type: string
+        default: self-hosted,pags
+      included-minutes:
+        description: Actions minutes included in the org's plan for the billing cycle.
+        type: number
+        default: 2000
+      safety-margin-minutes:
+        description: Switch to self-hosted this many minutes before the included total is reached.
+        type: number
+        default: 0
+    secrets:
+      billing-token:
+        description: Token with org billing read access (see README). Without it the router fails safe to self-hosted.
+        required: false
+    outputs:
+      runner:
+        description: JSON array for runs-on, e.g. ["ubuntu-latest"] or ["self-hosted","pags"].
+        value: ${{ jobs.route.outputs.runner }}
+
+jobs:
+  route:
+    runs-on: ${{ inputs.router-label }}
+    permissions:
+      contents: read
+    outputs:
+      runner: ${{ steps.route.outputs.runner }}
+    steps:
+      - name: Check out router script
+        uses: actions/checkout@v4
+        with:
+          repository: serge-ivo/runner-router
+          ref: ${{ github.job_workflow_sha }}
+          path: runner-router
+          persist-credentials: false
+
+      - id: route
+        name: Decide runs-on
+        shell: bash
+        env:
+          ROUTER_ORG: ${{ inputs.org || github.repository_owner }}
+          ROUTER_BILLING_TOKEN: ${{ secrets.billing-token }}
+          ROUTER_HOSTED_LABEL: ${{ inputs.hosted-label }}
+          ROUTER_SELF_HOSTED_LABELS: ${{ inputs.self-hosted-labels }}
+          ROUTER_INCLUDED_MINUTES: ${{ inputs.included-minutes }}
+          ROUTER_SAFETY_MARGIN: ${{ inputs.safety-margin-minutes }}
+        run: bash runner-router/scripts/route.sh

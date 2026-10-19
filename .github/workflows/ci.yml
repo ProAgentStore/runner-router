@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck scripts/*.sh tests/*.sh
+
+  script-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/route_test.sh
+
+  # No billing token and a hosted router label: exercises the fail-safe path end to end.
+  reusable-selftest:
+    uses: ./.github/workflows/router.yml
+    with:
+      router-label: ubuntu-latest
+
+  composite-selftest:
+    runs-on: ubuntu-latest
+    outputs:
+      runner: ${{ steps.route.outputs.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: route
+        uses: ./
+
+  assert-fail-safe:
+    needs: [reusable-selftest, composite-selftest]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Without a billing token both entry points must route to self-hosted
+        env:
+          REUSABLE: ${{ needs.reusable-selftest.outputs.runner }}
+          COMPOSITE: ${{ needs.composite-selftest.outputs.runner }}
+        run: |
+          want='["self-hosted","pags"]'
+          echo "reusable=$REUSABLE composite=$COMPOSITE"
+          [ "$REUSABLE" = "$want" ] || { echo "reusable workflow did not fail safe"; exit 1; }
+          [ "$COMPOSITE" = "$want" ] || { echo "composite action did not fail safe"; exit 1; }
