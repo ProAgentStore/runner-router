@@ -2,6 +2,8 @@ name: runner-router
 
 # Reusable workflow: outputs `runner`, a JSON array to use with
 #   runs-on: ${{ fromJSON(needs.<router-job>.outputs.runner) }}
+# A public calling repo always gets hosted-label, and so does this router job: no
+# self-hosted runner is ever requested and the billing token is never read.
 # See README.md for required token scopes and the fail-safe behaviour.
 on:
   workflow_call:
@@ -11,7 +13,7 @@ on:
         type: string
         default: ''
       router-label:
-        description: runs-on for the router job. Must be self-hosted, because hosted jobs are blocked once minutes run out.
+        description: runs-on for the router job on private repos. Must be self-hosted, because hosted jobs are blocked once minutes run out. Public repos ignore it and use hosted-label.
         type: string
         default: self-hosted
       hosted-label:
@@ -32,7 +34,7 @@ on:
         default: 0
     secrets:
       billing-token:
-        description: Token with org billing read access (see README). Without it the router fails safe to self-hosted.
+        description: Token with org billing read access, from a repo-level secret on private repos (see README). Never read for public repos. Without it a private repo fails safe to self-hosted.
         required: false
     outputs:
       runner:
@@ -41,7 +43,9 @@ on:
 
 jobs:
   route:
-    runs-on: ${{ inputs.router-label }}
+    # github.event.repository is the caller's. Only an explicit private == true
+    # requests self-hosted; public, or visibility unknown, stays on hosted.
+    runs-on: ${{ github.event.repository.private == true && inputs.router-label || inputs.hosted-label }}
     permissions:
       contents: read
     outputs:
@@ -60,7 +64,8 @@ jobs:
         shell: bash
         env:
           ROUTER_ORG: ${{ inputs.org || github.repository_owner }}
-          ROUTER_BILLING_TOKEN: ${{ secrets.billing-token }}
+          ROUTER_REPO_PRIVATE: ${{ github.event.repository.private == true }}
+          ROUTER_BILLING_TOKEN: ${{ github.event.repository.private == true && secrets.billing-token || '' }}
           ROUTER_HOSTED_LABEL: ${{ inputs.hosted-label }}
           ROUTER_SELF_HOSTED_LABELS: ${{ inputs.self-hosted-labels }}
           ROUTER_INCLUDED_MINUTES: ${{ inputs.included-minutes }}

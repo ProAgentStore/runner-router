@@ -1,7 +1,8 @@
 name: runner-router
 description: >-
   Pick GitHub-hosted or self-hosted runs-on from remaining included Actions minutes.
-  Fails safe to self-hosted. The job that calls this action must itself run on a self-hosted runner.
+  Public repos always get GitHub-hosted. Private repos fail safe to self-hosted, and there the job
+  that calls this action must itself run on a self-hosted runner.
 author: ProAgentStore
 
 inputs:
@@ -10,7 +11,7 @@ inputs:
     required: false
     default: ''
   billing-token:
-    description: Token with org billing read access (see README). Without it the action fails safe to self-hosted.
+    description: Token with org billing read access, from a repo-level secret on private repos (see README). Never read for public repos. Without it a private repo fails safe to self-hosted.
     required: false
     default: ''
   hosted-label:
@@ -46,7 +47,8 @@ runs:
       shell: bash
       env:
         ROUTER_ORG: ${{ inputs.org || github.repository_owner }}
-        ROUTER_BILLING_TOKEN: ${{ inputs.billing-token }}
+        ROUTER_REPO_PRIVATE: ${{ github.event.repository.private == true }}
+        ROUTER_BILLING_TOKEN: ${{ github.event.repository.private == true && inputs.billing-token || '' }}
         ROUTER_HOSTED_LABEL: ${{ inputs.hosted-label }}
         ROUTER_SELF_HOSTED_LABELS: ${{ inputs.self-hosted-labels }}
         ROUTER_INCLUDED_MINUTES: ${{ inputs.included-minutes }}

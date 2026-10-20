@@ -22,11 +22,11 @@ jobs:
       - uses: actions/checkout@v4
       - run: bash tests/route_test.sh
 
-  # No billing token and a hosted router label: exercises the fail-safe path end to end.
+  # This repo is public, so both entry points must route hosted end to end: the
+  # router job itself lands on hosted and no billing check runs. The private-repo
+  # billing and fail-safe paths are covered offline by tests/route_test.sh.
   reusable-selftest:
     uses: ./.github/workflows/router.yml
-    with:
-      router-label: ubuntu-latest
 
   composite-selftest:
     runs-on: ubuntu-latest
@@ -37,16 +37,16 @@ jobs:
       - id: route
         uses: ./
 
-  assert-fail-safe:
+  assert-public-hosted:
     needs: [reusable-selftest, composite-selftest]
     runs-on: ubuntu-latest
     steps:
-      - name: Without a billing token both entry points must route to self-hosted
+      - name: On a public repo both entry points must route to GitHub-hosted
         env:
           REUSABLE: ${{ needs.reusable-selftest.outputs.runner }}
           COMPOSITE: ${{ needs.composite-selftest.outputs.runner }}
         run: |
-          want='["self-hosted","pags"]'
+          want='["ubuntu-latest"]'
           echo "reusable=$REUSABLE composite=$COMPOSITE"
-          [ "$REUSABLE" = "$want" ] || { echo "reusable workflow did not fail safe"; exit 1; }
-          [ "$COMPOSITE" = "$want" ] || { echo "composite action did not fail safe"; exit 1; }
+          [ "$REUSABLE" = "$want" ] || { echo "reusable workflow did not route a public repo to hosted"; exit 1; }
+          [ "$COMPOSITE" = "$want" ] || { echo "composite action did not route a public repo to hosted"; exit 1; }
