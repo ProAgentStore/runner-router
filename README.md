@@ -53,7 +53,7 @@ Every job that should fail over takes `needs: router` and `runs-on: ${{ fromJSON
 3. Routes to **self-hosted** if either:
    - `netAmount` for Actions is greater than 0 (a billed overage), or
    - `used + safety-margin-minutes >= included-minutes`.
-4. Otherwise routes to **hosted** (`hosted-label`, default `ubuntu-latest`).
+4. Otherwise routes to **hosted** (`hosted-label`, default `ubuntu-latest`, pinnable — see below).
 5. **Fails safe to self-hosted** on any error: missing token, non-200 response, unexpected JSON, missing `jq`/`curl`, or invalid input.
 
 Every decision is logged in the router job's log and step summary as one line with the repo's visibility, the minutes used and included (private repos), and the chosen runner:
@@ -66,6 +66,44 @@ Every decision is logged in the router job's log and step summary as one line wi
 ```
 
 The text in parentheses is also the composite action's `reason` output.
+
+## Pinning a GitHub-hosted OS version
+
+GitHub moves `ubuntu-latest` (and `windows-latest`, `macos-latest`) to a new underlying image on
+its own schedule. On 2026-10-21 it repointed `ubuntu-latest` from 24.04 to 26.04, which broke a
+caller whose build depended on an exact 24.04 package. `hosted-label` defaults to `ubuntu-latest`,
+but you can pin an exact image two ways:
+
+1. **The `hosted-label` input**, set per call:
+
+   ```yaml
+   jobs:
+     router:
+       uses: ProAgentStore/runner-router/.github/workflows/router.yml@v1
+       with:
+         hosted-label: ubuntu-24.04
+         included-minutes: 2000
+       secrets:
+         billing-token: ${{ secrets.RUNNER_BILLING_TOKEN }}
+   ```
+
+2. **A per-repo config file**, `.github/runner-router.json` in the calling repo, consulted only
+   when the call site leaves `hosted-label` at its default — so you set the pin once instead of on
+   every job that calls the router:
+
+   ```json
+   { "hosted-label": "ubuntu-24.04" }
+   ```
+
+   The router reads this file from the calling repo over the GitHub API using the job's own
+   ambient token (no checkout, no extra secret); a missing file is normal, not an error.
+
+An explicit `hosted-label` input always wins over the config file. A label the router does not
+recognize — a typo, or an image GitHub has retired — falls back to `ubuntu-latest` rather than
+queuing a job for a runner it can never get; the decision log names the unrecognized label and the
+fallback. Recognized images: `ubuntu-latest`/`26.04`/`24.04`/`22.04`, `windows-latest`/`2025`/`2022`,
+`macos-latest`/`15`/`14`/`13` (and the `-large`/`-xlarge` macOS variants). Self-hosted label routing
+is unaffected either way.
 
 ## Requirements
 
@@ -88,7 +126,7 @@ Without a token a private repo's router still runs, but always routes to self-ho
 | --- | --- | --- |
 | `org` | calling repo owner | Org whose billing is checked |
 | `billing-token` (secret, or input for the composite) | none | Token from above, private repos only. Missing means fail-safe to self-hosted. Never read for public repos |
-| `hosted-label` | `ubuntu-latest` | Label for GitHub-hosted runners |
+| `hosted-label` | `ubuntu-latest` | Label for GitHub-hosted runners. Pin an exact image (e.g. `ubuntu-24.04`); see [Pinning a GitHub-hosted OS version](#pinning-a-github-hosted-os-version) |
 | `self-hosted-labels` | `self-hosted,pags` | Comma-separated labels for self-hosted runners |
 | `included-minutes` | `2000` | Minutes in your plan for the cycle. Set this to your plan's value (Free 2000, Team 3000, Enterprise 50000) |
 | `safety-margin-minutes` | `0` | Switch this many minutes early, to cover billing lag |
@@ -158,7 +196,7 @@ A complete, manually triggered example is in [`.github/workflows/example.yml`](.
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs:
 
 - `shellcheck` on the scripts,
-- `tests/route_test.sh`, an offline suite of 27 cases using recorded billing responses in `tests/fixtures/`, covering the public-repo rule, hosted, exhausted, margin, overage, each fail-safe path, and the decision log line,
+- `tests/route_test.sh`, an offline suite of 38 cases using recorded billing responses in `tests/fixtures/`, covering the public-repo rule, hosted, exhausted, margin, overage, each fail-safe path, the decision log line, and OS-version pinning (default, explicit, per-repo config, precedence, and an unrecognized image falling back),
 - an end-to-end check of both entry points, asserting that this public repo routes to hosted.
 
 The CI cannot test a live private-repo decision, because it is public and has no billing token. The offline suite covers that logic.
