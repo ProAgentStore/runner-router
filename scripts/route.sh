@@ -27,11 +27,17 @@ to_json_array() {
   printf '[%s]' "${out%,}"
 }
 
+case "${ROUTER_REPO_PRIVATE:-}" in
+  false) VISIBILITY=public ;;
+  true) VISIBILITY=private ;;
+  *) VISIBILITY="unknown (billing-checked as private)" ;;
+esac
+
 emit() { # $1 = runner JSON array, $2 = reason
   echo "runner=$1" >> "$OUT"
   echo "reason=$2" >> "$OUT"
-  echo "[runner-router] runs-on=$1 ($2)" >&2
-  echo "- runner-router: \`$1\`: $2" >> "$SUMMARY"
+  echo "[runner-router] visibility=$VISIBILITY runs-on=$1 ($2)" >&2
+  echo "- runner-router: visibility=$VISIBILITY, \`$1\`: $2" >> "$SUMMARY"
   exit 0
 }
 
@@ -90,6 +96,6 @@ OVERAGE=$(jq -n --argjson n "$NET" '$n > 0') || fail_safe "could not compare net
 EXHAUSTED=$(jq -n --argjson u "$USED" --argjson m "$MARGIN" --argjson i "$INCLUDED" '($u + $m) >= $i') \
   || fail_safe "could not compare minutes"
 
-[ "$OVERAGE" = true ] && emit "$SELF_JSON" "overage: netAmount=$NET"
+[ "$OVERAGE" = true ] && emit "$SELF_JSON" "overage: netAmount=$NET used=$USED included=$INCLUDED"
 [ "$EXHAUSTED" = true ] && emit "$SELF_JSON" "included minutes spent: used=$USED margin=$MARGIN included=$INCLUDED"
 emit "$HOSTED_JSON" "hosted: used=$USED of $INCLUDED included minutes"
