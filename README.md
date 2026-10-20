@@ -54,7 +54,18 @@ Every job that should fail over takes `needs: router` and `runs-on: ${{ fromJSON
    - `netAmount` for Actions is greater than 0 (a billed overage), or
    - `used + safety-margin-minutes >= included-minutes`.
 4. Otherwise routes to **hosted** (`hosted-label`, default `ubuntu-latest`).
-5. **Fails safe to self-hosted** on any error: missing token, non-200 response, unexpected JSON, missing `jq`/`curl`, or invalid input. The reason is written to the job log, the step summary, and the `reason` output.
+5. **Fails safe to self-hosted** on any error: missing token, non-200 response, unexpected JSON, missing `jq`/`curl`, or invalid input.
+
+Every decision is logged in the router job's log and step summary as one line with the repo's visibility, the minutes used and included (private repos), and the chosen runner:
+
+```
+[runner-router] visibility=public runs-on=["ubuntu-latest"] (public repo: GitHub-hosted, no billing check)
+[runner-router] visibility=private runs-on=["ubuntu-latest"] (hosted: used=120 of 2000 included minutes)
+[runner-router] visibility=private runs-on=["self-hosted","pags"] (included minutes spent: used=1850 margin=200 included=2000)
+[runner-router] visibility=private runs-on=["self-hosted","pags"] (fail-safe: no billing token; pass the billing-token secret)
+```
+
+The text in parentheses is also the composite action's `reason` output.
 
 ## Requirements
 
@@ -147,7 +158,7 @@ A complete, manually triggered example is in [`.github/workflows/example.yml`](.
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs:
 
 - `shellcheck` on the scripts,
-- `tests/route_test.sh`, an offline suite of 20 cases using recorded billing responses in `tests/fixtures/`, covering the public-repo rule, hosted, exhausted, margin, overage, and each fail-safe path,
+- `tests/route_test.sh`, an offline suite of 27 cases using recorded billing responses in `tests/fixtures/`, covering the public-repo rule, hosted, exhausted, margin, overage, each fail-safe path, and the decision log line,
 - an end-to-end check of both entry points, asserting that this public repo routes to hosted.
 
 The CI cannot test a live private-repo decision, because it is public and has no billing token. The offline suite covers that logic.
