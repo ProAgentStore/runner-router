@@ -15,7 +15,11 @@ inputs:
     required: false
     default: ''
   hosted-label:
-    description: runs-on label for GitHub-hosted runners.
+    description: >-
+      runs-on label for GitHub-hosted runners, e.g. ubuntu-24.04 to pin an exact image
+      instead of ubuntu-latest. An unrecognized image falls back to ubuntu-latest. Left
+      at its default, a .github/runner-router.json config file in the calling repo (see
+      README) is consulted instead, so a repo does not have to touch every call site.
     required: false
     default: ubuntu-latest
   self-hosted-labels:
@@ -42,6 +46,29 @@ outputs:
 runs:
   using: composite
   steps:
+    # #2: an optional .github/runner-router.json in the CALLING repo, read via the API with
+    # the job's own ambient token (composite steps share the calling job's context, so
+    # github.token is this repo's, not the router's) — no checkout, no extra secret. A
+    # missing file is normal, not an error.
+    - id: config
+      name: Read optional per-repo runner-router config
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set +e
+        label=""
+        if command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+          status=$(curl -sS -o /tmp/runner-router-config.json -w '%{http_code}' --max-time 10 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github.raw+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/contents/.github/runner-router.json?ref=${{ github.sha }}")
+          [ "$status" = 200 ] && label=$(jq -r '."hosted-label" // empty' /tmp/runner-router-config.json 2>/dev/null)
+        fi
+        echo "hosted-label=${label:-}" >> "$GITHUB_OUTPUT"
+        exit 0
+
     - id: route
       name: Decide runs-on
       shell: bash
@@ -50,6 +77,7 @@ runs:
         ROUTER_REPO_PRIVATE: ${{ github.event.repository.private == true }}
         ROUTER_BILLING_TOKEN: ${{ github.event.repository.private == true && inputs.billing-token || '' }}
         ROUTER_HOSTED_LABEL: ${{ inputs.hosted-label }}
+        ROUTER_CONFIG_HOSTED_LABEL: ${{ steps.config.outputs.hosted-label }}
         ROUTER_SELF_HOSTED_LABELS: ${{ inputs.self-hosted-labels }}
         ROUTER_INCLUDED_MINUTES: ${{ inputs.included-minutes }}
         ROUTER_SAFETY_MARGIN: ${{ inputs.safety-margin-minutes }}
