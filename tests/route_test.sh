@@ -72,6 +72,28 @@ check "custom labels are trimmed and JSON-encoded" '["pags","self-hosted"]' "fai
 check "custom hosted label" '["ubuntu-24.04"]' "hosted:" \
   ROUTER_HOSTED_LABEL=ubuntu-24.04 ROUTER_FIXTURE_BODY="$FIX/under-quota.json"
 
+# Public repos: hosted regardless of billing state, token, or input errors.
+check "public repo routes hosted with no token" "$HOSTED" "public repo" \
+  "${SELF_ARGS[@]}" ROUTER_REPO_PRIVATE=false ROUTER_BILLING_TOKEN=
+
+check "public repo ignores spent minutes" "$HOSTED" "public repo" \
+  "${SELF_ARGS[@]}" ROUTER_REPO_PRIVATE=false ROUTER_FIXTURE_BODY="$FIX/exhausted.json" ROUTER_INCLUDED_MINUTES=2000
+
+check "public repo never hits a fail-safe" "$HOSTED" "public repo" \
+  "${SELF_ARGS[@]}" ROUTER_REPO_PRIVATE=false ROUTER_ORG= ROUTER_INCLUDED_MINUTES=abc ROUTER_FIXTURE_STATUS=500
+
+check "public repo uses the custom hosted label" '["ubuntu-24.04"]' "public repo" \
+  ROUTER_REPO_PRIVATE=false ROUTER_HOSTED_LABEL=ubuntu-24.04
+
+check "public repo with a blank hosted label still routes hosted" "$HOSTED" "public repo" \
+  ROUTER_REPO_PRIVATE=false ROUTER_HOSTED_LABEL=" , "
+
+check "private repo still routes on billing" "$SELF" "included minutes spent" \
+  "${SELF_ARGS[@]}" ROUTER_REPO_PRIVATE=true ROUTER_FIXTURE_BODY="$FIX/exhausted.json" ROUTER_INCLUDED_MINUTES=2000
+
+check "private repo without a token fails safe" "$SELF" "fail-safe: no billing token" \
+  "${SELF_ARGS[@]}" ROUTER_REPO_PRIVATE=true ROUTER_BILLING_TOKEN=
+
 if [ "$fails" -gt 0 ]; then
   echo "$fails test(s) failed"
   exit 1

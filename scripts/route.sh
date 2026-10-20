@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Billing-aware runs-on router. Picks GitHub-hosted while the org still has
-# included Actions minutes, self-hosted once they are spent. Any error -> self-hosted.
+# Billing-aware runs-on router. Public repos always get GitHub-hosted (free, unlimited
+# minutes; self-hosted runners must never serve them). Private repos get GitHub-hosted
+# while the org still has included Actions minutes, self-hosted once they are spent.
+# Any error on a private repo -> self-hosted.
 #
-# Env in:   ROUTER_ORG, ROUTER_BILLING_TOKEN, ROUTER_HOSTED_LABEL,
+# Env in:   ROUTER_REPO_PRIVATE ("false" = public: no billing check, token never read),
+#           ROUTER_ORG, ROUTER_BILLING_TOKEN, ROUTER_HOSTED_LABEL,
 #           ROUTER_SELF_HOSTED_LABELS, ROUTER_INCLUDED_MINUTES, ROUTER_SAFETY_MARGIN
 # Env out:  $GITHUB_OUTPUT gets runner=<JSON array> and reason=<text>
 # Test env: ROUTER_FIXTURE_BODY (recorded API response), ROUTER_FIXTURE_STATUS (default 200)
@@ -32,9 +35,18 @@ emit() { # $1 = runner JSON array, $2 = reason
   exit 0
 }
 
+HOSTED_LABEL="${ROUTER_HOSTED_LABEL:-ubuntu-latest}"
+
+# Public repo: hosted, always. Decided before the token is read and before any
+# fail-safe, because every fail-safe path routes to self-hosted.
+if [ "${ROUTER_REPO_PRIVATE:-}" = false ]; then
+  PUBLIC_JSON=$(to_json_array "$HOSTED_LABEL")
+  [ "$PUBLIC_JSON" = "[]" ] && PUBLIC_JSON='["ubuntu-latest"]'
+  emit "$PUBLIC_JSON" "public repo: GitHub-hosted, no billing check"
+fi
+
 ORG="${ROUTER_ORG:-}"
 TOKEN="${ROUTER_BILLING_TOKEN:-}"
-HOSTED_LABEL="${ROUTER_HOSTED_LABEL:-ubuntu-latest}"
 SELF_LABELS="${ROUTER_SELF_HOSTED_LABELS:-self-hosted}"
 INCLUDED="${ROUTER_INCLUDED_MINUTES:-2000}"
 MARGIN="${ROUTER_SAFETY_MARGIN:-0}"
