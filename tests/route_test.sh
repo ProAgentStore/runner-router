@@ -137,6 +137,41 @@ check_log "log states why a private repo failed safe" \
   'visibility=private runs-on=["self-hosted"] (fail-safe: no billing token' \
   ROUTER_REPO_PRIVATE=true ROUTER_BILLING_TOKEN=
 
+# #2: pinning a GitHub-hosted OS version, through the input or a per-repo config file.
+
+check "default stays ubuntu-latest with neither input nor config set" "$HOSTED" "hosted:" \
+  "${SELF_ARGS[@]}" ROUTER_FIXTURE_BODY="$FIX/under-quota.json"
+
+check "an explicit pin to a recognized image is used as-is" '["ubuntu-24.04"]' "hosted:" \
+  "${SELF_ARGS[@]}" ROUTER_HOSTED_LABEL=ubuntu-24.04 ROUTER_FIXTURE_BODY="$FIX/under-quota.json"
+
+check "windows and macos pins are recognized images too" '["macos-15"]' "hosted:" \
+  "${SELF_ARGS[@]}" ROUTER_HOSTED_LABEL=macos-15 ROUTER_FIXTURE_BODY="$FIX/under-quota.json"
+
+check "per-repo config pins the image when the caller leaves hosted-label at its default" '["ubuntu-24.04"]' "hosted:" \
+  "${SELF_ARGS[@]}" ROUTER_CONFIG_HOSTED_LABEL=ubuntu-24.04 ROUTER_FIXTURE_BODY="$FIX/under-quota.json"
+
+check "an explicit hosted-label input overrides the per-repo config file" '["ubuntu-22.04"]' "hosted:" \
+  "${SELF_ARGS[@]}" ROUTER_HOSTED_LABEL=ubuntu-22.04 ROUTER_CONFIG_HOSTED_LABEL=macos-15 ROUTER_FIXTURE_BODY="$FIX/under-quota.json"
+
+check "an unrecognized hosted-label pin falls back to ubuntu-latest" "$HOSTED" "hosted: used=" \
+  "${SELF_ARGS[@]}" ROUTER_HOSTED_LABEL=ubuntu-24.4 ROUTER_FIXTURE_BODY="$FIX/under-quota.json"
+check_log "...and the log names the unrecognized pin" \
+  "(hosted: used=120 of 2000 included minutes (unrecognized hosted-label 'ubuntu-24.4', using ubuntu-latest))" \
+  ROUTER_HOSTED_LABEL=ubuntu-24.4 ROUTER_FIXTURE_BODY="$FIX/under-quota.json"
+
+check "an unrecognized per-repo config pin also falls back to ubuntu-latest" "$HOSTED" "hosted:" \
+  "${SELF_ARGS[@]}" ROUTER_CONFIG_HOSTED_LABEL=ubuntu-16.04 ROUTER_FIXTURE_BODY="$FIX/under-quota.json"
+
+check "public repo falls back to ubuntu-latest on an unrecognized pin" "$HOSTED" "public repo" \
+  "${SELF_ARGS[@]}" ROUTER_REPO_PRIVATE=false ROUTER_HOSTED_LABEL=notaversion
+
+check "public repo honors a recognized pin from the per-repo config" '["ubuntu-24.04"]' "public repo" \
+  ROUTER_REPO_PRIVATE=false ROUTER_CONFIG_HOSTED_LABEL=ubuntu-24.04
+
+check "a pinned image still fails safe to self-hosted when minutes are spent" "$SELF" "included minutes spent" \
+  "${SELF_ARGS[@]}" ROUTER_HOSTED_LABEL=ubuntu-24.04 ROUTER_FIXTURE_BODY="$FIX/exhausted.json" ROUTER_INCLUDED_MINUTES=2000
+
 if [ "$fails" -gt 0 ]; then
   echo "$fails test(s) failed"
   exit 1

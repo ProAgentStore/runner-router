@@ -4,8 +4,12 @@
 # while the org still has included Actions minutes, self-hosted once they are spent.
 # Any error on a private repo -> self-hosted.
 #
+# #2: the GitHub-hosted image is pinnable, not just "latest". Precedence is explicit
+# input > per-repo config file > the ubuntu-latest default, and an unrecognized image
+# (typo, retired label) falls back to ubuntu-latest rather than failing the job outright.
+#
 # Env in:   ROUTER_REPO_PRIVATE ("false" = public: no billing check, token never read),
-#           ROUTER_ORG, ROUTER_BILLING_TOKEN, ROUTER_HOSTED_LABEL,
+#           ROUTER_ORG, ROUTER_BILLING_TOKEN, ROUTER_HOSTED_LABEL, ROUTER_CONFIG_HOSTED_LABEL,
 #           ROUTER_SELF_HOSTED_LABELS, ROUTER_INCLUDED_MINUTES, ROUTER_SAFETY_MARGIN
 # Env out:  $GITHUB_OUTPUT gets runner=<JSON array> and reason=<text>
 # Test env: ROUTER_FIXTURE_BODY (recorded API response), ROUTER_FIXTURE_STATUS (default 200)
@@ -42,13 +46,44 @@ emit() { # $1 = runner JSON array, $2 = reason
 }
 
 HOSTED_LABEL="${ROUTER_HOSTED_LABEL:-ubuntu-latest}"
+# #2: a per-repo config file is consulted only when the caller left hosted-label at its
+# default — an explicit input always wins, so a config file never silently overrides it.
+if [ "$HOSTED_LABEL" = "ubuntu-latest" ] && [ -n "${ROUTER_CONFIG_HOSTED_LABEL:-}" ]; then
+  HOSTED_LABEL="$ROUTER_CONFIG_HOSTED_LABEL"
+fi
+
+# #2: GitHub's known hosted-runner images (plus -large/-xlarge macOS variants). A pin
+# outside this list — a typo, or a version GitHub has retired — falls back to
+# ubuntu-latest rather than queuing a job for a runner it can never get.
+KNOWN_IMAGE_RE='^(ubuntu-(latest|26\.04|24\.04|22\.04)|windows-(latest|2025|2022)|macos-(latest|15|14|13)(-(large|xlarge))?)$'
+trim() {
+  local s="$1"
+  s="${s#"${s%%[![:space:]]*}"}"
+  s="${s%"${s##*[![:space:]]}"}"
+  printf '%s' "$s"
+}
+UNKNOWN_IMAGE=""
+IFS=',' read -ra HOSTED_ITEMS <<< "$HOSTED_LABEL"
+for item in "${HOSTED_ITEMS[@]}"; do
+  item=$(trim "$item")
+  [ -z "$item" ] && continue
+  if ! [[ "$item" =~ $KNOWN_IMAGE_RE ]]; then
+    UNKNOWN_IMAGE="$item"
+    break
+  fi
+done
+UNKNOWN_IMAGE_REASON=""
+if [ -n "$UNKNOWN_IMAGE" ]; then
+  HOSTED_LABEL=ubuntu-latest
+  UNKNOWN_IMAGE_REASON=" (unrecognized hosted-label '$UNKNOWN_IMAGE', using ubuntu-latest)"
+fi
 
 # Public repo: hosted, always. Decided before the token is read and before any
 # fail-safe, because every fail-safe path routes to self-hosted.
 if [ "${ROUTER_REPO_PRIVATE:-}" = false ]; then
   PUBLIC_JSON=$(to_json_array "$HOSTED_LABEL")
   [ "$PUBLIC_JSON" = "[]" ] && PUBLIC_JSON='["ubuntu-latest"]'
-  emit "$PUBLIC_JSON" "public repo: GitHub-hosted, no billing check"
+  emit "$PUBLIC_JSON" "public repo: GitHub-hosted, no billing check$UNKNOWN_IMAGE_REASON"
 fi
 
 ORG="${ROUTER_ORG:-}"
@@ -61,7 +96,7 @@ HOSTED_JSON=$(to_json_array "$HOSTED_LABEL")
 SELF_JSON=$(to_json_array "$SELF_LABELS")
 [ "$SELF_JSON" = "[]" ] && SELF_JSON='["self-hosted"]'
 
-fail_safe() { emit "$SELF_JSON" "fail-safe: $1"; }
+fail_safe() { emit "$SELF_JSON" "fail-safe: $1$UNKNOWN_IMAGE_REASON"; }
 
 [ "$HOSTED_JSON" = "[]" ] && fail_safe "hosted-label is empty"
 [[ "$INCLUDED" =~ ^[0-9]+$ ]] || fail_safe "included-minutes must be a whole number, got '$INCLUDED'"
@@ -96,6 +131,6 @@ OVERAGE=$(jq -n --argjson n "$NET" '$n > 0') || fail_safe "could not compare net
 EXHAUSTED=$(jq -n --argjson u "$USED" --argjson m "$MARGIN" --argjson i "$INCLUDED" '($u + $m) >= $i') \
   || fail_safe "could not compare minutes"
 
-[ "$OVERAGE" = true ] && emit "$SELF_JSON" "overage: netAmount=$NET used=$USED included=$INCLUDED"
-[ "$EXHAUSTED" = true ] && emit "$SELF_JSON" "included minutes spent: used=$USED margin=$MARGIN included=$INCLUDED"
-emit "$HOSTED_JSON" "hosted: used=$USED of $INCLUDED included minutes"
+[ "$OVERAGE" = true ] && emit "$SELF_JSON" "overage: netAmount=$NET used=$USED included=$INCLUDED$UNKNOWN_IMAGE_REASON"
+[ "$EXHAUSTED" = true ] && emit "$SELF_JSON" "included minutes spent: used=$USED margin=$MARGIN included=$INCLUDED$UNKNOWN_IMAGE_REASON"
+emit "$HOSTED_JSON" "hosted: used=$USED of $INCLUDED included minutes$UNKNOWN_IMAGE_REASON"
