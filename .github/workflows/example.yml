@@ -1,7 +1,8 @@
 name: example
 
-# Manual only: the router needs a self-hosted runner and a billing token,
-# so this would queue forever on a repo that has neither.
+# Manual only. In a private repo this needs a self-hosted runner and the repo-level
+# RUNNER_BILLING_TOKEN secret. Option 2's router job is pinned to self-hosted, so it
+# is for private repos only; in a public repo run that job on ubuntu-latest instead.
 on:
   workflow_dispatch:
 
@@ -16,7 +17,7 @@ jobs:
       self-hosted-labels: self-hosted,pags
       included-minutes: 3000
     secrets:
-      billing-token: ${{ secrets.ORG_BILLING_TOKEN }}
+      billing-token: ${{ secrets.RUNNER_BILLING_TOKEN }}
 
   build:
     needs: route
@@ -24,7 +25,7 @@ jobs:
     steps:
       - run: echo "Routed to ${{ needs.route.outputs.runner }}"
 
-  # Option 2: composite action (this job must run on self-hosted)
+  # Option 2: composite action (private repos: this job must run on self-hosted)
   route-composite:
     runs-on: [self-hosted, pags]
     outputs:
@@ -35,7 +36,7 @@ jobs:
         with:
           self-hosted-labels: self-hosted,pags
           included-minutes: 3000
-          billing-token: ${{ secrets.ORG_BILLING_TOKEN }}
+          billing-token: ${{ secrets.RUNNER_BILLING_TOKEN }}
 
   build-composite:
     needs: route-composite
