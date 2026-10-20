@@ -94,6 +94,49 @@ check "private repo still routes on billing" "$SELF" "included minutes spent" \
 check "private repo without a token fails safe" "$SELF" "fail-safe: no billing token" \
   "${SELF_ARGS[@]}" ROUTER_REPO_PRIVATE=true ROUTER_BILLING_TOKEN=
 
+# The issue's private paths, with visibility stated explicitly as the workflows pass it.
+PRIV=(ROUTER_REPO_PRIVATE=true "${SELF_ARGS[@]}")
+
+check "private under limit routes hosted" "$HOSTED" "hosted: used=" \
+  "${PRIV[@]}" ROUTER_FIXTURE_BODY="$FIX/under-quota.json" ROUTER_INCLUDED_MINUTES=2000
+
+check "private within margin routes self-hosted" "$SELF" "included minutes spent" \
+  "${PRIV[@]}" ROUTER_FIXTURE_BODY="$FIX/near-cap.json" ROUTER_INCLUDED_MINUTES=2000 ROUTER_SAFETY_MARGIN=200
+
+check "private overage routes self-hosted" "$SELF" "overage: netAmount=" \
+  "${PRIV[@]}" ROUTER_FIXTURE_BODY="$FIX/overage.json" ROUTER_INCLUDED_MINUTES=2000
+
+check "private API error fails safe" "$SELF" "fail-safe: billing API returned HTTP 500" \
+  "${PRIV[@]}" ROUTER_FIXTURE_BODY="$FIX/under-quota.json" ROUTER_FIXTURE_STATUS=500
+
+# check_log <name> <expected substring of the job-log line> [VAR=value ...]
+check_log() {
+  local name=$1 want=$2
+  shift 2
+  local log
+  log=$(env -i PATH="$PATH" GITHUB_OUTPUT=/dev/null GITHUB_STEP_SUMMARY=/dev/null \
+    ROUTER_ORG=ProAgentStore ROUTER_BILLING_TOKEN=test-token "$@" \
+    bash "$ROUTE" 2>&1 >/dev/null)
+  if [[ "$log" == *"$want"* ]]; then
+    echo "ok   $name"
+  else
+    echo "FAIL $name: log=[$log]"
+    fails=$((fails + 1))
+  fi
+}
+
+check_log "log states public visibility and the runner" \
+  'visibility=public runs-on=["ubuntu-latest"] (public repo' \
+  ROUTER_REPO_PRIVATE=false
+
+check_log "log states private visibility, minutes and the runner" \
+  'visibility=private runs-on=["ubuntu-latest"] (hosted: used=' \
+  ROUTER_REPO_PRIVATE=true ROUTER_FIXTURE_BODY="$FIX/under-quota.json"
+
+check_log "log states why a private repo failed safe" \
+  'visibility=private runs-on=["self-hosted"] (fail-safe: no billing token' \
+  ROUTER_REPO_PRIVATE=true ROUTER_BILLING_TOKEN=
+
 if [ "$fails" -gt 0 ]; then
   echo "$fails test(s) failed"
   exit 1
