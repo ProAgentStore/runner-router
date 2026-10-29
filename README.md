@@ -196,7 +196,7 @@ A complete, manually triggered example is in [`.github/workflows/example.yml`](.
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs:
 
 - `shellcheck` on the scripts,
-- `tests/route_test.sh`, an offline suite of 38 cases using recorded billing responses in `tests/fixtures/`, covering the public-repo rule, hosted, exhausted, margin, overage, each fail-safe path, the decision log line, and OS-version pinning (default, explicit, per-repo config, precedence, and an unrecognized image falling back),
+- `tests/route_test.sh`, an offline suite of 43 cases using recorded billing responses in `tests/fixtures/`, covering the public-repo rule, hosted, exhausted, margin, overage, each fail-safe path, the decision log line, OS-version pinning (default, explicit, per-repo config, precedence, and an unrecognized image falling back), and the four acceptance-criteria tests for platform#1329,
 - an end-to-end check of both entry points, asserting that this public repo routes to hosted.
 
 The CI cannot test a live private-repo decision, because it is public and has no billing token. The offline suite covers that logic.

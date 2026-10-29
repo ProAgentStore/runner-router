@@ -172,6 +172,50 @@ check "public repo honors a recognized pin from the per-repo config" '["ubuntu-2
 check "a pinned image still fails safe to self-hosted when minutes are spent" "$SELF" "included minutes spent" \
   "${SELF_ARGS[@]}" ROUTER_HOSTED_LABEL=ubuntu-24.04 ROUTER_FIXTURE_BODY="$FIX/exhausted.json" ROUTER_INCLUDED_MINUTES=2000
 
+# platform#1329: the four acceptance-criteria tests, one check per numbered criterion so
+# each is traceable back to the ticket independently of the broader suite above.
+
+# Criterion 1: a public repo routes to GitHub-hosted (ubuntu-latest), never self-hosted,
+# even when the billing state would otherwise force self-hosted for a private repo.
+check "AC1 (#1329): public repo always routes to GitHub-hosted, never self-hosted" "$HOSTED" "public repo" \
+  "${SELF_ARGS[@]}" ROUTER_REPO_PRIVATE=false ROUTER_BILLING_TOKEN=test-token \
+  ROUTER_FIXTURE_BODY="$FIX/exhausted.json" ROUTER_INCLUDED_MINUTES=2000
+
+# Criterion 2: a private repo routes to Serge's self-hosted runners (self-hosted,pags).
+check "AC2 (#1329): private repo routes to self-hosted,pags" "$SELF" "included minutes spent" \
+  "${SELF_ARGS[@]}" ROUTER_REPO_PRIVATE=true \
+  ROUTER_FIXTURE_BODY="$FIX/exhausted.json" ROUTER_INCLUDED_MINUTES=2000
+
+# Criterion 3: the router job itself must start on GitHub-hosted runners without needing
+# a self-hosted runner first. That job's own runs-on lives in router.yml, not in
+# route.sh, so this is a structural check on the workflow file: the `route` job must
+# gate router-label (self-hosted) behind an explicit private==true check rather than
+# using it unconditionally, which is the actual deadlock this issue reported. (The
+# ci.yml reusable-selftest/composite-selftest/assert-public-hosted jobs prove the same
+# thing live: this repo registers no self-hosted runner at all, so if the router job's
+# runs-on ever resolved to router-label here, those jobs would hang and CI would never
+# go green.)
+check_router_job_runs_on() {
+  local name="AC3 (#1329): router.yml's route job never runs unconditionally on router-label"
+  local file="$HERE/../.github/workflows/router.yml"
+  local want="runs-on: \${{ github.event.repository.private == true && inputs.router-label || inputs.hosted-label }}"
+  if grep -qF "$want" "$file"; then
+    echo "ok   $name"
+  else
+    echo "FAIL $name: expected line not found in $file"
+    fails=$((fails + 1))
+  fi
+}
+check_router_job_runs_on
+
+# Criterion 4: a repo without RUNNER_BILLING_TOKEN still routes correctly — public stays
+# hosted, private fails safe to self-hosted.
+check "AC4a (#1329): public repo with no billing token still routes hosted" "$HOSTED" "public repo" \
+  "${SELF_ARGS[@]}" ROUTER_REPO_PRIVATE=false ROUTER_BILLING_TOKEN=
+
+check "AC4b (#1329): private repo with no billing token fails safe to self-hosted" "$SELF" "fail-safe: no billing token" \
+  "${SELF_ARGS[@]}" ROUTER_REPO_PRIVATE=true ROUTER_BILLING_TOKEN=
+
 if [ "$fails" -gt 0 ]; then
   echo "$fails test(s) failed"
   exit 1

@@ -22,9 +22,14 @@ jobs:
       - uses: actions/checkout@v4
       - run: bash tests/route_test.sh
 
-  # This repo is public, so both entry points must route hosted end to end: the
-  # router job itself lands on hosted and no billing check runs. The private-repo
-  # billing and fail-safe paths are covered offline by tests/route_test.sh.
+  # platform#1329 criteria 1 and 3, proved live (not simulated): this repo is public
+  # and registers no self-hosted runner at all, so if the router job's own runs-on ever
+  # resolved to router-label (self-hosted) here, this job would hang waiting for a
+  # runner that doesn't exist and CI would never go green. Passing is the proof that
+  # the router job starts on GitHub-hosted without needing self-hosted first (#3), and
+  # that a public caller is routed hosted end to end (#1). Private-repo routing (#2) and
+  # the no-token paths (#4) are covered offline by tests/route_test.sh, since this repo
+  # has no private counterpart and no billing token to exercise that live.
   reusable-selftest:
     uses: ./.github/workflows/router.yml
 
