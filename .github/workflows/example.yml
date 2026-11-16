@@ -1,7 +1,7 @@
 name: example
 
-# Manual only. In a private repo this needs a self-hosted runner and the repo-level
-# RUNNER_BILLING_TOKEN secret. Option 2's router job is pinned to self-hosted, so it
+# Manual only. In a private repo this needs a self-hosted runner, and the billing App
+# installed on the org (README: Billing GitHub App); no secret. Option 2's router job is pinned to self-hosted, so it
 # is for private repos only; in a public repo run that job on ubuntu-latest instead.
 on:
   workflow_dispatch:
@@ -15,9 +15,6 @@ jobs:
     uses: ProAgentStore/runner-router/.github/workflows/router.yml@v1
     with:
       self-hosted-labels: self-hosted,pags
-      included-minutes: 3000
-    secrets:
-      billing-token: ${{ secrets.RUNNER_BILLING_TOKEN }}
 
   build:
     needs: route
@@ -35,8 +32,6 @@ jobs:
         uses: ProAgentStore/runner-router@v1
         with:
           self-hosted-labels: self-hosted,pags
-          included-minutes: 3000
-          billing-token: ${{ secrets.RUNNER_BILLING_TOKEN }}
 
   build-composite:
     needs: route-composite

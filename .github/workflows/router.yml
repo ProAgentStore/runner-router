@@ -3,7 +3,7 @@ name: runner-router
 # Reusable workflow: outputs `runner`, a JSON array to use with
 #   runs-on: ${{ fromJSON(needs.<router-job>.outputs.runner) }}
 # A public calling repo always gets hosted-label, and so does this router job: no
-# self-hosted runner is ever requested and the billing token is never read.
+# self-hosted runner is ever requested and nothing billing-related is read.
 # See README.md for required token scopes and the fail-safe behaviour.
 on:
   workflow_call:
@@ -38,7 +38,7 @@ on:
         default: 0
     secrets:
       billing-token:
-        description: Token with org billing read access, from a repo-level secret on private repos (see README). Never read for public repos. Without it a private repo fails safe to self-hosted.
+        description: Optional token with org billing read access (repo-level secret). Without it a private repo routes from the published mode.json (see README). Never read for public repos.
         required: false
     outputs:
       runner:

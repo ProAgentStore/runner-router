@@ -16,7 +16,7 @@ check() {
   local out="$TMP/out.txt"
   : > "$out"
   env -i PATH="$PATH" GITHUB_OUTPUT="$out" GITHUB_STEP_SUMMARY=/dev/null \
-    ROUTER_ORG=ProAgentStore ROUTER_BILLING_TOKEN=test-token "$@" \
+    ROUTER_ORG=ProAgentStore ROUTER_BILLING_TOKEN=test-token ROUTER_MODE_FIXTURE="$FIX/no-such-mode.json" "$@" \
     bash "$ROUTE" >/dev/null 2>&1
   local got_runner got_reason
   got_runner=$(sed -n 's/^runner=//p' "$out")
@@ -115,7 +115,7 @@ check_log() {
   shift 2
   local log
   log=$(env -i PATH="$PATH" GITHUB_OUTPUT=/dev/null GITHUB_STEP_SUMMARY=/dev/null \
-    ROUTER_ORG=ProAgentStore ROUTER_BILLING_TOKEN=test-token "$@" \
+    ROUTER_ORG=ProAgentStore ROUTER_BILLING_TOKEN=test-token ROUTER_MODE_FIXTURE="$FIX/no-such-mode.json" "$@" \
     bash "$ROUTE" 2>&1 >/dev/null)
   if [[ "$log" == *"$want"* ]]; then
     echo "ok   $name"
@@ -215,6 +215,41 @@ check "AC4a (#1329): public repo with no billing token still routes hosted" "$HO
 
 check "AC4b (#1329): private repo with no billing token fails safe to self-hosted" "$SELF" "fail-safe: no billing token" \
   "${SELF_ARGS[@]}" ROUTER_REPO_PRIVATE=true ROUTER_BILLING_TOKEN=
+
+# #3: no token -> route from the centrally published mode.json.
+NOV16=1794787200   # 2026-11-16T00:00:00Z
+MODE=(ROUTER_REPO_PRIVATE=true ROUTER_BILLING_TOKEN= ROUTER_MODE_FIXTURE="$FIX/mode.json")
+
+check "published mode: hosted org routes hosted" "$HOSTED" "hosted: published mode for ProAgentStore" \
+  "${SELF_ARGS[@]}" "${MODE[@]}" ROUTER_NOW=$((NOV16 + 3600))
+
+check "published mode: self-hosted org routes self-hosted" "$SELF" "self-hosted: published mode for proappstore-online" \
+  "${SELF_ARGS[@]}" "${MODE[@]}" ROUTER_ORG=proappstore-online ROUTER_NOW=$((NOV16 + 3600))
+
+check "published mode: checked yesterday is still fresh" "$HOSTED" "hosted: published mode" \
+  "${SELF_ARGS[@]}" "${MODE[@]}" ROUTER_NOW=$((NOV16 + 86400 + 3600))
+
+check "published mode: two days old fails safe" "$SELF" "fail-safe: no billing token, and the published mode is stale" \
+  "${SELF_ARGS[@]}" "${MODE[@]}" ROUTER_NOW=$((NOV16 + 2 * 86400 + 60))
+
+check "published mode: org not listed fails safe" "$SELF" "fail-safe: no billing token, and HeartFull-online is not in the published mode" \
+  "${SELF_ARGS[@]}" "${MODE[@]}" ROUTER_ORG=HeartFull-online ROUTER_NOW=$((NOV16 + 3600))
+
+check "published mode: unreadable file fails safe" "$SELF" "fail-safe: no billing token, and the published mode could not be read" \
+  "${SELF_ARGS[@]}" ROUTER_REPO_PRIVATE=true ROUTER_BILLING_TOKEN= ROUTER_MODE_FIXTURE="$FIX/no-such-mode.json"
+
+check "published mode: non-JSON file fails safe" "$SELF" "fail-safe: no billing token, and the published mode has no valid checked_on" \
+  "${SELF_ARGS[@]}" ROUTER_REPO_PRIVATE=true ROUTER_BILLING_TOKEN= ROUTER_MODE_FIXTURE="$FIX/not-json.txt"
+
+check "published mode: missing checked_on fails safe" "$SELF" "fail-safe: no billing token, and the published mode has no valid checked_on" \
+  "${SELF_ARGS[@]}" ROUTER_REPO_PRIVATE=true ROUTER_BILLING_TOKEN= ROUTER_MODE_FIXTURE="$FIX/mode-no-date.json"
+
+check "a billing token still takes precedence over the published mode" "$SELF" "included minutes spent" \
+  "${SELF_ARGS[@]}" ROUTER_REPO_PRIVATE=true ROUTER_MODE_FIXTURE="$FIX/mode.json" ROUTER_NOW=$((NOV16 + 3600)) \
+  ROUTER_FIXTURE_BODY="$FIX/exhausted.json" ROUTER_INCLUDED_MINUTES=2000
+
+check "public repo never reads the published mode" "$HOSTED" "public repo" \
+  "${SELF_ARGS[@]}" ROUTER_REPO_PRIVATE=false ROUTER_BILLING_TOKEN= ROUTER_MODE_FIXTURE="$FIX/mode.json" ROUTER_ORG=proappstore-online
 
 if [ "$fails" -gt 0 ]; then
   echo "$fails test(s) failed"

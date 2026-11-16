@@ -2,7 +2,8 @@
 # Billing-aware runs-on router. Public repos always get GitHub-hosted (free, unlimited
 # minutes; self-hosted runners must never serve them). Private repos get GitHub-hosted
 # while the org still has included Actions minutes, self-hosted once they are spent.
-# Any error on a private repo -> self-hosted.
+# Any error on a private repo -> self-hosted. With no billing token, a private repo
+# routes from the centrally published mode.json instead (#3).
 #
 # #2: the GitHub-hosted image is pinnable, not just "latest". Precedence is explicit
 # input > per-repo config file > the ubuntu-latest default, and an unrecognized image
@@ -12,7 +13,9 @@
 #           ROUTER_ORG, ROUTER_BILLING_TOKEN, ROUTER_HOSTED_LABEL, ROUTER_CONFIG_HOSTED_LABEL,
 #           ROUTER_SELF_HOSTED_LABELS, ROUTER_INCLUDED_MINUTES, ROUTER_SAFETY_MARGIN
 # Env out:  $GITHUB_OUTPUT gets runner=<JSON array> and reason=<text>
-# Test env: ROUTER_FIXTURE_BODY (recorded API response), ROUTER_FIXTURE_STATUS (default 200)
+#           ROUTER_MODE_URL (published mode.json, used when there is no token)
+# Test env: ROUTER_FIXTURE_BODY (recorded API response), ROUTER_FIXTURE_STATUS (default 200),
+#           ROUTER_MODE_FIXTURE (local mode.json instead of the URL), ROUTER_NOW (epoch seconds)
 set -uo pipefail
 
 OUT="${GITHUB_OUTPUT:-/dev/stdout}"
@@ -102,9 +105,35 @@ fail_safe() { emit "$SELF_JSON" "fail-safe: $1$UNKNOWN_IMAGE_REASON"; }
 [[ "$INCLUDED" =~ ^[0-9]+$ ]] || fail_safe "included-minutes must be a whole number, got '$INCLUDED'"
 [[ "$MARGIN" =~ ^[0-9]+$ ]] || fail_safe "safety-margin-minutes must be a whole number, got '$MARGIN'"
 [[ "$ORG" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]] || fail_safe "invalid or empty org '$ORG'"
-[ -n "$TOKEN" ] || fail_safe "no billing token; pass the billing-token secret"
 command -v jq >/dev/null 2>&1 || fail_safe "jq is not installed on this runner"
 command -v curl >/dev/null 2>&1 || fail_safe "curl is not installed on this runner"
+
+# #3: without a token, route from the mode this repo's publish-mode workflow publishes
+# for every org its GitHub App is installed on. No secret is needed in the calling repo.
+# Missing, unreadable, more than a day past its checked_on date, or no entry for this
+# org -> self-hosted.
+route_from_published_mode() {
+  local file mode checked age
+  file=$(mktemp) || fail_safe "mktemp failed"
+  if [ -n "${ROUTER_MODE_FIXTURE:-}" ]; then
+    cp "$ROUTER_MODE_FIXTURE" "$file" 2>/dev/null || { rm -f "$file"; fail_safe "no billing token, and the published mode could not be read"; }
+  else
+    curl -fsS --max-time 15 -o "$file" "${ROUTER_MODE_URL:-https://raw.githubusercontent.com/ProAgentStore/runner-router/main/mode.json}" \
+      || { rm -f "$file"; fail_safe "no billing token, and the published mode could not be read"; }
+  fi
+  mode=$(jq -r --arg o "$ORG" '.orgs[$o] // empty' "$file" 2>/dev/null)
+  checked=$(jq -r '.checked_on // empty' "$file" 2>/dev/null)
+  age=$(jq -r --argjson now "${ROUTER_NOW:-$(date +%s)}" '(($now - (.checked_on + "T00:00:00Z" | fromdateiso8601)) / 86400) | floor' "$file" 2>/dev/null)
+  rm -f "$file"
+  [[ "$age" =~ ^[0-9]+$ ]] || fail_safe "no billing token, and the published mode has no valid checked_on"
+  [ "$age" -le 1 ] || fail_safe "no billing token, and the published mode is stale (checked_on $checked)"
+  case "$mode" in
+    hosted) emit "$HOSTED_JSON" "hosted: published mode for $ORG, checked $checked$UNKNOWN_IMAGE_REASON" ;;
+    self-hosted) emit "$SELF_JSON" "self-hosted: published mode for $ORG, checked $checked$UNKNOWN_IMAGE_REASON" ;;
+    *) fail_safe "no billing token, and $ORG is not in the published mode" ;;
+  esac
+}
+[ -n "$TOKEN" ] || route_from_published_mode
 
 # Current calendar-month usage (the API defaults to the current year and month).
 BODY=$(mktemp) || fail_safe "mktemp failed"

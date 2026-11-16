@@ -11,7 +11,7 @@ inputs:
     required: false
     default: ''
   billing-token:
-    description: Token with org billing read access, from a repo-level secret on private repos (see README). Never read for public repos. Without it a private repo fails safe to self-hosted.
+    description: Optional token with org billing read access (repo-level secret). Without it a private repo routes from the published mode.json (see README). Never read for public repos.
     required: false
     default: ''
   hosted-label:
